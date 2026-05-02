@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HTML OBS Studio - RTMP Bridge Edition</title>
+  <style>
+    :root {
+      --bg:#070910; --panel:rgba(20,24,35,.93); --panel2:rgba(32,38,55,.88);
+      --text:#f5f7fb; --muted:#9da9bd; --accent:#9146ff; --cyan:#00d4ff;
+      --danger:#ff4d6d; --ok:#43e68a; --warn:#ffcc66; --border:rgba(255,255,255,.14);
+      --radius:20px; --shadow:0 18px 60px rgba(0,0,0,.36);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; min-height:100vh; color:var(--text);
+      font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+      background:
+        radial-gradient(circle at 12% 8%,rgba(145,70,255,.35),transparent 30%),
+        radial-gradient(circle at 88% 80%,rgba(0,212,255,.2),transparent 28%),
+        linear-gradient(145deg,#06080e,#111625 48%,#06080e);
+    }
+    header{
+      padding:28px clamp(16px,4vw,56px) 14px;
+      display:grid; grid-template-columns:1fr auto; gap:18px; align-items:center;
+    }
+    h1{margin:0;font-size:clamp(2rem,5vw,4.2rem);letter-spacing:-.06em;line-height:.95}
+    .sub{color:var(--muted);max-width:940px;line-height:1.55;margin:12px 0 0;font-size:1.02rem}
+    .pill{
+      border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);
+      border-radius:999px;padding:11px 16px;display:inline-flex;align-items:center;gap:10px;
+      white-space:nowrap;box-shadow:var(--shadow)
+    }
+    .dot{width:12px;height:12px;border-radius:50%;background:var(--danger);animation:pulse 1.6s infinite}
+    .dot.ok{background:var(--ok)}
+    .dot.warn{background:var(--warn)}
+    @keyframes pulse{70%{box-shadow:0 0 0 12px rgba(255,77,109,0)}100%{box-shadow:0 0 0 0 rgba(255,77,109,0)}}
+    main{
+      padding:18px clamp(16px,4vw,56px) 48px;
+      display:grid; grid-template-columns:minmax(340px,1.45fr) minmax(320px,.55fr); gap:18px;
+    }
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;backdrop-filter:blur(14px)}
+    .grid{display:grid;gap:18px}
+    .preview-wrap{position:relative;aspect-ratio:16/9;border-radius:18px;overflow:hidden;background:#000;border:1px solid var(--border)}
+    canvas{width:100%;height:100%;display:block;background:#05070b}
+    video{display:none}
+    h2{margin:0 0 12px;font-size:1.1rem;display:flex;align-items:center;gap:10px}
+    .icon{width:34px;height:34px;display:grid;place-items:center;border-radius:12px;border:1px solid var(--border);background:linear-gradient(135deg,rgba(145,70,255,.35),rgba(0,212,255,.18))}
+    label{display:block;color:var(--muted);font-size:.9rem;margin:10px 0 7px}
+    input,select,textarea{
+      width:100%;border:1px solid var(--border);background:rgba(255,255,255,.07);
+      color:var(--text);padding:11px 12px;border-radius:13px;font:inherit;outline:none
+    }
+    textarea{min-height:82px;resize:vertical}
+    input:focus,select:focus,textarea:focus{border-color:rgba(145,70,255,.75);box-shadow:0 0 0 4px rgba(145,70,255,.11)}
+    button{
+      border:0;color:white;background:linear-gradient(135deg,var(--accent),#5c7cff);
+      padding:11px 13px;border-radius:13px;font-weight:800;cursor:pointer;transition:transform .14s ease,filter .14s ease
+    }
+    button:hover{transform:translateY(-1px);filter:brightness(1.08)}
+    button.secondary{border:1px solid var(--border);background:rgba(255,255,255,.08)}
+    button.danger{background:linear-gradient(135deg,#ff4d6d,#b51645)}
+    button.ok{background:linear-gradient(135deg,#16c784,#00a56a)}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .btn-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+    .status{color:var(--muted);line-height:1.5;font-size:.92rem}
+    .good{color:var(--ok)} .bad{color:var(--danger)} .warn{color:var(--warn)}
+    .notice{border:1px solid rgba(255,204,102,.35);background:rgba(255,204,102,.09);border-radius:16px;padding:14px;color:#ffe5a6;line-height:1.5}
+    .success{border:1px solid rgba(67,230,138,.32);background:rgba(67,230,138,.08);border-radius:16px;padding:14px;color:#caffdf;line-height:1.5}
+    .mini{color:var(--muted);font-size:.86rem;line-height:1.5}
+    .meter{height:12px;border-radius:999px;background:rgba(255,255,255,.09);overflow:hidden;border:1px solid rgba(255,255,255,.08)}
+    .meter>div{height:100%;width:0%;background:linear-gradient(90deg,var(--ok),var(--warn),var(--danger));transition:width .08s linear}
+    .scene-buttons{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    code{background:rgba(255,255,255,.08);border:1px solid var(--border);border-radius:8px;padding:2px 6px}
+    .footer{grid-column:1/-1;text-align:center;color:var(--muted);padding-top:4px;font-size:.9rem}
+    @media(max-width:980px){header,main{grid-template-columns:1fr}.pill{width:max-content}}
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>HTML OBS RTMP Bridge</h1>
+    <p class="sub">
+      Browser-Studio mit Kamera, Mikro, Szenen, Overlays, Aufnahme und RTMP-Konfiguration.
+      Direktes RTMP aus HTML geht nicht, aber diese Version kann an eine lokale Bridge senden,
+      die daraus einen Twitch-RTMP-Stream macht.
+    </p>
+  </div>
+  <div class="pill"><span class="dot" id="bridgeDot"></span><span id="bridgeState">Bridge getrennt</span></div>
+</header>
+
+<main>
+  <section class="card">
+    <h2><span class="icon">🎥</span> Programm-Vorschau</h2>
+    <div class="preview-wrap"><canvas id="stage" width="1280" height="720"></canvas></div>
+    <video id="camera" autoplay muted playsinline></video>
+
+    <div class="btn-row">
+      <button class="ok" onclick="startDevices()">Kamera & Mikro starten</button>
+      <button onclick="startLocalRecording()">Lokal aufnehmen</button>
+      <button class="danger" onclick="stopLocalRecording()">Aufnahme stoppen</button>
+      <button class="secondary" onclick="snapshot()">Screenshot</button>
+    </div>
+    <p class="status" id="status">Bereit. Für Twitch-RTMP brauchst du die mitgelieferte Node/FFmpeg-Bridge.</p>
+  </section>
+
+  <aside class="grid">
+    <section class="card">
+      <h2><span class="icon">📡</span> RTMP / Twitch</h2>
+      <div class="notice">
+        Niemals deinen Stream-Key öffentlich zeigen. Diese HTML speichert ihn nur lokal im Browser,
+        aber sicherer ist: Stream-Key erst kurz vor dem Start eintragen und danach löschen.
+      </div>
+
+      <label for="rtmpUrl">RTMP Server URL</label>
+      <input id="rtmpUrl" value="rtmp://live.twitch.tv/app" />
+
+      <label for="streamKey">Stream-Key</label>
+      <input id="streamKey" type="password" placeholder="live_xxxxxxxxxxxxxxxxxxxxx" />
+
+      <label for="bridgeUrl">Lokale Bridge WebSocket URL</label>
+      <input id="bridgeUrl" value="ws://localhost:8080" />
+
+      <div class="row">
+        <div>
+          <label for="bitrate">Bitrate</label>
+          <select id="bitrate">
+            <option value="2500k">2500k</option>
+            <option value="4500k" selected>4500k</option>
+            <option value="6000k">6000k</option>
+          </select>
+        </div>
+        <div>
+          <label for="fps">FPS</label>
+          <select id="fps">
+            <option value="30" selected>30</option>
+            <option value="60">60</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button onclick="connectBridge()">Bridge verbinden</button>
+        <button class="ok" onclick="startBridgeStream()">RTMP Stream starten</button>
+        <button class="danger" onclick="stopBridgeStream()">Stop</button>
+      </div>
+
+      <p class="status" id="rtmpStatus">RTMP noch nicht aktiv.</p>
+    </section>
+
+    <section class="card">
+      <h2><span class="icon">🎛️</span> Szenen</h2>
+      <div class="row">
+        <div>
+          <label for="scene">Szene</label>
+          <select id="scene">
+            <option value="live">Live Gameplay</option>
+            <option value="starting">Stream startet gleich</option>
+            <option value="pause">Pause</option>
+            <option value="ending">Stream Ende</option>
+            <option value="brb">Bin gleich zurück</option>
+          </select>
+        </div>
+        <div>
+          <label for="quality">Qualität</label>
+          <select id="quality">
+            <option value="720" selected>720p</option>
+            <option value="1080">1080p</option>
+          </select>
+        </div>
+      </div>
+      <div class="scene-buttons" style="margin-top:12px">
+        <button class="secondary" onclick="setScene('starting')">Start</button>
+        <button class="secondary" onclick="setScene('live')">Live</button>
+        <button class="secondary" onclick="setScene('pause')">Pause</button>
+        <button class="secondary" onclick="setScene('brb')">BRB</button>
+        <button class="secondary" onclick="setScene('ending')">Ende</button>
+        <button class="secondary" onclick="toggleMic()">Mic</button>
+      </div>
+      <label>Mikro-Pegel</label>
+      <div class="meter"><div id="meterBar"></div></div>
+      <p class="mini" id="micState">Mikro: aus</p>
+    </section>
+  </aside>
+
+  <section class="card">
+    <h2><span class="icon">✨</span> Overlay</h2>
+    <label for="title">Titel im Bild</label>
+    <input id="title" value="VenomSnake_Twitch" />
+    <label for="subtitle">Untertitel</label>
+    <input id="subtitle" value="Live • Gaming • Metal Vibes" />
+    <label for="ticker">Lauftext</label>
+    <textarea id="ticker">Willkommen im Stream! Folgt für mehr Gameplay, Highlights und Musikideen.</textarea>
+    <div class="row">
+      <div><label for="accent">Akzentfarbe</label><input id="accent" type="color" value="#9146ff" /></div>
+      <div><label for="showCam">Kamera anzeigen</label><select id="showCam"><option value="yes">Ja</option><option value="no">Nein</option></select></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2><span class="icon">🧠</span> Warum Bridge?</h2>
+    <div class="success">
+      Der Browser kann Kamera/Mikro holen und Video als WebM/MediaRecorder erzeugen.
+      Twitch erwartet aber RTMP. Deshalb sendet diese HTML WebM-Daten per WebSocket an eine lokale Bridge.
+      Die Bridge startet FFmpeg und schiebt daraus RTMP zu Twitch.
+    </div>
+    <p class="mini">
+      Für echte OBS-Funktionen wie Game Capture, Desktop-Audio-Mixing, Hardware-Encoding, Plugins,
+      Audiofilter und Encoder-Feintuning brauchst du weiterhin native Software oder eine sehr viel größere App.
+    </p>
+  </section>
+
+  <div class="footer">HTML-Frontend + RTMP-Bridge-Konzept. Für echtes Streaming: Node.js + FFmpeg starten.</div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const canvas = $("stage");
+const ctx = canvas.getContext("2d");
+const video = $("camera");
+
+let mediaStream = null, audioContext = null, analyser = null, meterData = null;
+let localRecorder = null, bridgeRecorder = null, chunks = [];
+let micEnabled = true, tickerX = canvas.width, ws = null;
+
+const sceneText = {
+  live:["LIVE","Gameplay läuft"], starting:["STREAM STARTET","Gleich geht es los"],
+  pause:["PAUSE","Kurz Energie nachladen"], ending:["STREAM ENDE","Danke fürs Zuschauen"],
+  brb:["BRB","Bin gleich zurück"]
+};
+
+function setStatus(msg, cls=""){ $("status").className = "status " + cls; $("status").textContent = msg; }
+function setRtmp(msg, cls=""){ $("rtmpStatus").className = "status " + cls; $("rtmpStatus").textContent = msg; }
+
+async function startDevices(){
+  try{
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      video:{width:{ideal:1280},height:{ideal:720},frameRate:{ideal:Number($("fps").value)}},
+      audio:true
+    });
+    video.srcObject = mediaStream;
+    setupAudioMeter(mediaStream);
+    micEnabled = true;
+    $("micState").textContent = "Mikro: an";
+    setStatus("Kamera und Mikro laufen.", "good");
+  }catch(err){ setStatus("Kamera/Mikro Fehler: " + err.message, "bad"); }
+}
+
+function setupAudioMeter(stream){
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioContext.createAnalyser();
+  analyser.fftSize = 256;
+  const source = audioContext.createMediaStreamSource(stream);
+  source.connect(analyser);
+  meterData = new Uint8Array(analyser.frequencyBinCount);
+}
+
+function toggleMic(){
+  if(!mediaStream) return;
+  micEnabled = !micEnabled;
+  mediaStream.getAudioTracks().forEach(t => t.enabled = micEnabled);
+  $("micState").textContent = micEnabled ? "Mikro: an" : "Mikro: stumm";
+}
+
+function connectBridge(){
+  const url = $("bridgeUrl").value.trim();
+  try{
+    ws = new WebSocket(url);
+    ws.binaryType = "arraybuffer";
+    ws.onopen = () => {
+      $("bridgeDot").className = "dot ok";
+      $("bridgeState").textContent = "Bridge verbunden";
+      setRtmp("Bridge verbunden. Du kannst RTMP starten.", "good");
+    };
+    ws.onmessage = e => setRtmp(String(e.data), "warn");
+    ws.onclose = () => {
+      $("bridgeDot").className = "dot";
+      $("bridgeState").textContent = "Bridge getrennt";
+      setRtmp("Bridge getrennt.", "bad");
+    };
+    ws.onerror = () => setRtmp("Bridge-Verbindung fehlgeschlagen. Läuft server.js?", "bad");
+  }catch(err){ setRtmp(err.message, "bad"); }
+}
+
+function getMixedStream(){
+  const fps = Number($("fps").value);
+  const canvasStream = canvas.captureStream(fps);
+  const mixed = new MediaStream([...canvasStream.getVideoTracks()]);
+  if(mediaStream) mediaStream.getAudioTracks().forEach(t => mixed.addTrack(t));
+  return mixed;
+}
+
+function startBridgeStream(){
+  if(!ws || ws.readyState !== WebSocket.OPEN){ setRtmp("Erst Bridge verbinden.", "bad"); return; }
+  if(!mediaStream){ setRtmp("Erst Kamera & Mikro starten.", "bad"); return; }
+
+  const rtmpUrl = $("rtmpUrl").value.trim();
+  const streamKey = $("streamKey").value.trim();
+  if(!rtmpUrl || !streamKey){ setRtmp("RTMP URL und Stream-Key fehlen.", "bad"); return; }
+
+  ws.send(JSON.stringify({
+    type:"start",
+    rtmpUrl, streamKey,
+    bitrate:$("bitrate").value,
+    fps:Number($("fps").value),
+    width:canvas.width,
+    height:canvas.height
+  }));
+
+  const stream = getMixedStream();
+  const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus") ? "video/webm;codecs=vp8,opus" : "video/webm";
+  bridgeRecorder = new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond: Number($("bitrate").value.replace("k","")) * 1000 });
+  bridgeRecorder.ondataavailable = async e => {
+    if(e.data && e.data.size && ws && ws.readyState === WebSocket.OPEN){
+      ws.send(await e.data.arrayBuffer());
+    }
+  };
+  bridgeRecorder.onstop = () => {
+    if(ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type:"stop"}));
+  };
+  bridgeRecorder.start(500);
+  $("bridgeDot").className = "dot warn";
+  $("bridgeState").textContent = "RTMP sendet";
+  setRtmp("Streamdaten werden an Bridge gesendet. Prüfe Twitch/OBS/Server-Log.", "warn");
+}
+
+function stopBridgeStream(){
+  if(bridgeRecorder && bridgeRecorder.state !== "inactive") bridgeRecorder.stop();
+  if(ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({type:"stop"}));
+  $("bridgeDot").className = "dot ok";
+  $("bridgeState").textContent = "Bridge verbunden";
+  setRtmp("RTMP gestoppt.", "warn");
+}
+
+function startLocalRecording(){
+  const stream = getMixedStream();
+  chunks = [];
+  localRecorder = new MediaRecorder(stream);
+  localRecorder.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+  localRecorder.onstop = () => {
+    const blob = new Blob(chunks, {type:"video/webm"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "html-obs-recording-" + new Date().toISOString().replace(/[:.]/g,"-") + ".webm";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  localRecorder.start(1000);
+  setStatus("Lokale Aufnahme läuft.", "warn");
+}
+
+function stopLocalRecording(){
+  if(localRecorder && localRecorder.state !== "inactive") localRecorder.stop();
+}
+
+function snapshot(){
+  const a = document.createElement("a");
+  a.href = canvas.toDataURL("image/png");
+  a.download = "html-obs-screenshot.png";
+  a.click();
+}
+
+function setScene(name){ $("scene").value = name; }
+
+function applyQuality(){
+  if($("quality").value === "1080"){ canvas.width=1920; canvas.height=1080; }
+  else{ canvas.width=1280; canvas.height=720; }
+  tickerX = canvas.width;
+}
+$("quality").addEventListener("change", applyQuality);
+
+function roundedRect(x,y,w,h,r){
+  ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
+}
+
+function drawBackground(w,h,accent){
+  const g = ctx.createLinearGradient(0,0,w,h);
+  g.addColorStop(0,"#070910"); g.addColorStop(.45,"#121827"); g.addColorStop(1,"#05070b");
+  ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+  ctx.globalAlpha=.35; ctx.fillStyle=accent; ctx.beginPath(); ctx.arc(w*.12,h*.12,w*.24,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=.18; ctx.fillStyle="#00d4ff"; ctx.beginPath(); ctx.arc(w*.9,h*.88,w*.22,0,Math.PI*2); ctx.fill();
+  ctx.globalAlpha=1;
+}
+
+function drawCamera(w,h){
+  if($("showCam").value === "no") return;
+  if(video.readyState >= 2){
+    if($("scene").value === "live"){
+      ctx.drawImage(video,0,0,w,h); ctx.fillStyle="rgba(0,0,0,.22)"; ctx.fillRect(0,0,w,h);
+    }else{
+      const bw=w*.28,bh=bw*9/16,x=w-bw-38,y=38;
+      ctx.save(); roundedRect(x,y,bw,bh,26); ctx.clip(); ctx.drawImage(video,x,y,bw,bh); ctx.restore();
+      ctx.strokeStyle="rgba(255,255,255,.35)"; ctx.lineWidth=3; roundedRect(x,y,bw,bh,26); ctx.stroke();
+    }
+  }
+}
+
+function updateMeter(){
+  if(!analyser || !meterData || !micEnabled){ $("meterBar").style.width="0%"; return; }
+  analyser.getByteFrequencyData(meterData);
+  const avg = meterData.reduce((a,b)=>a+b,0) / meterData.length;
+  $("meterBar").style.width = Math.min(100, Math.round(avg*1.25)) + "%";
+}
+
+function drawOverlay(){
+  const w=canvas.width,h=canvas.height,accent=$("accent").value,scene=$("scene").value;
+  const [big,small] = sceneText[scene] || sceneText.live;
+  drawBackground(w,h,accent); drawCamera(w,h);
+
+  if(scene !== "live"){
+    ctx.textAlign="center"; ctx.fillStyle="rgba(0,0,0,.38)"; roundedRect(w*.16,h*.28,w*.68,h*.34,34); ctx.fill();
+    ctx.fillStyle="#fff"; ctx.font=`900 ${Math.round(w*.065)}px system-ui`; ctx.fillText(big,w/2,h*.43);
+    ctx.fillStyle="rgba(255,255,255,.78)"; ctx.font=`600 ${Math.round(w*.028)}px system-ui`; ctx.fillText(small,w/2,h*.51);
+  }
+
+  ctx.textAlign="left"; ctx.fillStyle="rgba(0,0,0,.55)"; roundedRect(28,28,w*.44,92,24); ctx.fill();
+  ctx.fillStyle=accent; roundedRect(46,46,14,56,7); ctx.fill();
+  ctx.fillStyle="#fff"; ctx.font=`900 ${Math.round(w*.026)}px system-ui`; ctx.fillText($("title").value || "VenomSnake_Twitch",76,68);
+  ctx.fillStyle="rgba(255,255,255,.72)"; ctx.font=`600 ${Math.round(w*.016)}px system-ui`; ctx.fillText($("subtitle").value || "Live",76,96);
+
+  ctx.fillStyle="rgba(0,0,0,.65)"; ctx.fillRect(0,h-62,w,62);
+  const ticker = $("ticker").value || "Willkommen im Stream!";
+  ctx.font=`700 ${Math.round(w*.019)}px system-ui`; ctx.fillStyle="#fff"; ctx.fillText(ticker,tickerX,h-23);
+  tickerX -= 2.2 * (w/1280);
+  if(tickerX < -ctx.measureText(ticker).width - 80) tickerX = w + 40;
+
+  updateMeter();
+  requestAnimationFrame(drawOverlay);
+}
+
+applyQuality();
+drawOverlay();
+</script>
+</body>
+</html>
